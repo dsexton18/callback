@@ -1,0 +1,20 @@
+<%#
+kind: snippet
+name: ansible_tower_callback_timer
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Systemd timer to run the Ansible Tower / AWX callback service 1 minute after boot.
+  This avoids race conditions with cloud-init and networking.
+-%>
+[Unit]
+Description=Run Ansible Tower callback service after boot
+
+[Timer]
+# Wait 1 minute after boot before firing
+OnBootSec=1min
+# Optional: repeat every 15 minutes until the callback service succeeds
+#Persistent=true
+
+[Install]
+WantedBy=timers.target
