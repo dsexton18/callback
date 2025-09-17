@@ -1,0 +1,61 @@
+Wraps curl in a for i in 1 2 3 loop.
+Sleeps 10 seconds between attempts.
+Exits with 0 as soon as one call succeeds.
+Logs failures to journalctl -u ansible-callback.
+This means:
+The host waits for network.
+Refreshes CA trust.
+Sleeps 30s.
+Tries callback up to 3 times (≈50 seconds max total wait).
+
+<%#
+kind: snippet
+name: ansible_tower_callback_service
+model: ProvisioningTemplate
+snippet: true
+description: |
+  The content of a systemd service for running Ansible Tower / AWX callback script one-time.
+  Used in the ansible_provisioning_callback snippet for systemd enabled systems.
+-%>
+[Unit]
+Description=Provisioning callback to Ansible Tower
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+
+# Refresh CA trust in case custom anchors were added during provisioning
+ExecStartPre=/usr/bin/update-ca-trust extract
+
+# Give network/DNS some extra time to settle
+ExecStartPre=/bin/sleep 30
+
+# Run curl with retries (up to 3 attempts, 10s apart), log everything
+ExecStart=/bin/bash -c '\
+  LOGFILE=/var/log/ansible-callback.log; \
+  echo "=== Starting Ansible callback at $(date) ===" >> $LOGFILE; \
+  for i in 1 2 3; do \
+    echo "Attempt $i at $(date)..." >> $LOGFILE; \
+    <% if host_param("ansible_extra_vars") -%>
+    /usr/bin/curl -k -s -H "Content-Type: application/json" \
+      --data "{\"host_config_key\":\"<%= host_param("ansible_host_config_key") %>\", \"extra_vars\": <%= host_param("ansible_extra_vars") %>}" \
+      https://<%= host_param("ansible_tower_fqdn") %>/api/v2/job_templates/<%= host_param("ansible_job_template_id") %>/callback/ \
+      >> $LOGFILE 2>&1 && { echo "Callback succeeded on attempt $i" >> $LOGFILE; exit 0; }; \
+    <% else -%>
+    /usr/bin/curl -k -s \
+      --data "host_config_key=<%= host_param("ansible_host_config_key") -%>" \
+      https://<%= host_param("ansible_tower_fqdn") -%>/api/v2/job_templates/<%= host_param("ansible_job_template_id") -%>/callback/ \
+      >> $LOGFILE 2>&1 && { echo "Callback succeeded on attempt $i" >> $LOGFILE; exit 0; }; \
+    <% end -%>
+    echo "Callback attempt $i failed at $(date), retrying in 10s..." >> $LOGFILE; \
+    sleep 10; \
+  done; \
+  echo "Callback failed after 3 attempts at $(date)" >> $LOGFILE; \
+  exit 1'
+
+# Disable service after successful run
+ExecStartPost=/usr/bin/systemctl disable ansible-callback
+
+[Install]
+WantedBy=multi-user.target
