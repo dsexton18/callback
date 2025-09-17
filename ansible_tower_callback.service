@@ -1,0 +1,45 @@
+<%#
+kind: snippet
+name: ansible_tower_callback_service
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Systemd service for running Ansible Tower / AWX callback script, triggered by a timer.
+  Includes CA trust refresh, 30s delay, retries, and logging.
+-%>
+[Unit]
+Description=Provisioning callback to Ansible Tower
+Wants=network-online.target cloud-init.target
+After=network-online.target cloud-init.target
+
+[Service]
+Type=oneshot
+
+# Refresh CA trust in case custom anchors were added during provisioning
+ExecStartPre=/usr/bin/update-ca-trust extract
+
+# Give network/DNS some extra time to settle
+ExecStartPre=/bin/sleep 30
+
+# Run curl with retries (3 attempts, 10s apart), log everything
+ExecStart=/bin/bash -c '\
+  LOGFILE=/var/log/ansible-callback.log; \
+  echo "=== Starting Ansible callback at $(date) ===" >> $LOGFILE; \
+  for i in 1 2 3; do \
+    echo "Attempt $i at $(date)..." >> $LOGFILE; \
+    <% if host_param("ansible_extra_vars") -%>
+    /usr/bin/curl -k -s -H "Content-Type: application/json" \
+      --data "{\"host_config_key\":\"<%= host_param("ansible_host_config_key") %>\", \"extra_vars\": <%= host_param("ansible_extra_vars") %>}" \
+      https://<%= host_param("ansible_tower_fqdn") %>/api/v2/job_templates/<%= host_param("ansible_job_template_id") %>/callback/ \
+      >> $LOGFILE 2>&1 && { echo "Callback succeeded on attempt $i" >> $LOGFILE; exit 0; }; \
+    <% else -%>
+    /usr/bin/curl -k -s \
+      --data "host_config_key=<%= host_param("ansible_host_config_key") -%>" \
+      https://<%= host_param("ansible_tower_fqdn") -%>/api/v2/job_templates/<%= host_param("ansible_job_template_id") -%>/callback/ \
+      >> $LOGFILE 2>&1 && { echo "Callback succeeded on attempt $i" >> $LOGFILE; exit 0; }; \
+    <% end -%>
+    echo "Callback attempt $i failed at $(date), retrying in 10s..." >> $LOGFILE; \
+    sleep 10; \
+  done; \
+  echo "Callback failed after 3 attempts at $(date)" >> $LOGFILE; \
+  exit 1'
