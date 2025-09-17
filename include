@@ -1,0 +1,11 @@
+# Create systemd service unit
+<%= snippet 'ansible_tower_callback_service' %>
+
+# Create systemd timer unit
+<%= snippet 'ansible_tower_callback_timer' %>
+
+# Enable and start the timer after provisioning
+%post
+systemctl daemon-reload
+systemctl enable --now ansible-callback.timer
+%end
