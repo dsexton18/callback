@@ -1,0 +1,46 @@
+journalctl -u ansible-callback -b
+
+
+[Service]
+Restart=always
+RestartSec=10s
+
+
+systemctl status ansible-callback
+journalctl -u ansible-callback -b
+
+
+
+[Service]
+ExecStartPre=/bin/sleep 30
+ExecStart=
+ExecStart=/usr/bin/curl -vk https://<AAP_URL>/api/v2/job_event_callback/<TOKEN>/
+Restart=on-failure
+RestartSec=15s
+
+
+
+
+
+
+[Unit]
+# Ensure network is up before starting
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Update CA trust in case a custom cert was added
+ExecStartPre=/usr/bin/update-ca-trust extract
+
+# Sleep 30s once to let networking/DNS settle
+ExecStartPre=/bin/sleep 30
+
+# Clear the default ExecStart so we can replace it
+ExecStart=
+
+# Run the callback (replace <AAP_URL> and <TOKEN>)
+ExecStart=/usr/bin/curl -vk https://<AAP_URL>/api/v2/job_event_callback/<TOKEN>/
+
+# Retry if curl fails
+Restart=on-failure
+RestartSec=15s
