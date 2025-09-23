@@ -1,0 +1,57 @@
+logs to yes
+/var/log/aap-callback-debug.log
+
+<%#
+kind: snippet
+name: aap_callback_debug
+%>
+
+# Debugging Hardened AAP 2.5 Callback Script
+
+# Parameters (host/hostgroup override)
+AAP_CLUSTER="<%= @host.params['aap_cluster'] || 'prod' %>"  # dev/test/prod
+DELAY="<%= @host.params['aap_callback_delay'] || '120' %>"
+RETRIES="<%= @host.params['aap_callback_retries'] || '5' %>"
+RETRY_WAIT="<%= @host.params['aap_callback_retry_wait'] || '30' %>"
+
+HOSTNAME="<%= @host.name %>"
+
+# Define cluster URLs
+case "$AAP_CLUSTER" in
+    dev)
+        AAP_CALLBACK_URL="https://aap-dev.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+    test)
+        AAP_CALLBACK_URL="https://aap-test.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+    prod|*)
+        AAP_CALLBACK_URL="https://aap-prod.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+esac
+
+# === Callback Script with Debug Logging ===
+cat > /usr/local/bin/aap-callback-debug.sh << 'EOF'
+#!/bin/bash
+
+LOGFILE="/var/log/aap-callback-debug.log"
+exec &> >(tee -a $LOGFILE)
+
+echo "=== Starting AAP Callback Debug ==="
+echo "Hostname: $HOSTNAME"
+echo "AAP Cluster: $AAP_CLUSTER"
+echo "AAP URL: $AAP_CALLBACK_URL"
+
+# Network check
+echo "--- Network Check ---"
+ping -c 3 $(echo $AAP_CALLBACK_URL | awk -F/ '{print $3}') || echo "Ping failed"
+
+# DNS check
+echo "--- DNS Check ---"
+host $(echo $AAP_CALLBACK_URL | awk -F/ '{print $3}') || echo "DNS resolution failed"
+
+# TLS check
+echo "--- TLS Check ---"
+curl -vk $AAP_CALLBACK_URL -o /dev/null || echo "TLS/connect failed"
+
+# Callback with retries
+echo
