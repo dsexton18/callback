@@ -1,0 +1,85 @@
+[Unit]
+Description=Ansible Callback to AAP
+After=network-online.target cloud-init.target
+Wants=network-online.target cloud-init.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ansible-callback.sh
+# Restart if it fails (up to the timer interval)
+Restart=on-failure
+RestartSec=15s
+
+
+journalctl -u <callback-service> -b
+
+
+
+Replace line in cloud-init with this 
+<%= snippet 'ansible_aap_callback_hardened' %>
+
+
+<%#
+kind: snippet
+name: ansible_aap_callback_hardened
+%>
+
+# Hardened Ansible Automation Platform callback service with retries and delayed start
+
+# === Callback Script ===
+cat > /usr/local/bin/aap-callback.sh << 'EOF'
+#!/bin/bash
+AAP_CALLBACK_URL="<%= foreman_url("ansible") %>"
+HOST_CONFIG_KEY="<%= @host.configKey %>"
+HOSTNAME="<%= @host.name %>"
+
+for i in {1..5}; do
+    echo "[$(date)] Attempt $i: calling back to AAP..."
+    curl -s -k -X POST -H "Content-Type: application/json" \
+      -d "{\"host_config_key\": \"$HOST_CONFIG_KEY\", \"hostname\": \"$HOSTNAME\"}" \
+      "$AAP_CALLBACK_URL"
+    rc=$?
+    if [ $rc -eq 0 ]; then
+        echo "AAP callback succeeded"
+        exit 0
+    fi
+    echo "AAP callback failed with exit code $rc, retrying in 30s..."
+    sleep 30
+done
+
+echo "AAP callback failed after 5 attempts"
+exit 1
+EOF
+
+chmod +x /usr/local/bin/aap-callback.sh
+
+# === Systemd Service ===
+cat > /etc/systemd/system/aap-callback.service << 'EOF'
+[Unit]
+Description=AAP Callback to Automation Controller
+After=network-online.target cloud-init.target
+Wants=network-online.target cloud-init.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aap-callback.sh
+Restart=on-failure
+RestartSec=15s
+EOF
+
+# === Systemd Timer ===
+cat > /etc/systemd/system/aap-callback.timer << 'EOF'
+[Unit]
+Description=Delayed AAP Callback Timer
+
+[Timer]
+OnBootSec=2min
+Unit=aap-callback.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Enable timer
+systemctl daemon-reload
+systemctl enable --now aap-callback.timer
