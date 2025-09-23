@@ -1,0 +1,102 @@
+Repalce <%= snippet 'ansible_callback_host' %> replace ansible_callback_host with below name of tempalte
+
+ <%= snippet 'aap_callback_hardened' %>
+
+aap_callback_url → full AAP 2.5 callback URL
+
+aap_callback_delay → seconds to wait after boot (default 120s)
+
+aap_callback_retries → number of retry attempts (default 5)
+
+aap_callback_retry_wait → seconds between retries (default 30s)
+
+
+
+aap_cluster	dev / test / prod
+aap_callback_delay	180
+aap_callback_retries	10
+aap_callback_retry_wait	60
+
+
+
+
+<%#
+kind: snippet
+name: aap_callback_hardened
+%>
+
+# Hardened & dynamic AAP 2.5 callback script
+
+# Parameters (host/hostgroup override)
+AAP_CLUSTER="<%= @host.params['aap_cluster'] || 'prod' %>"  # dev/test/prod
+DELAY="<%= @host.params['aap_callback_delay'] || '120' %>"        
+RETRIES="<%= @host.params['aap_callback_retries'] || '5' %>"     
+RETRY_WAIT="<%= @host.params['aap_callback_retry_wait'] || '30' %>"  
+
+HOSTNAME="<%= @host.name %>"
+
+# Define cluster URLs (can expand)
+case "$AAP_CLUSTER" in
+    dev)
+        AAP_CALLBACK_URL="https://aap-dev.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+    test)
+        AAP_CALLBACK_URL="https://aap-test.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+    prod|*)
+        AAP_CALLBACK_URL="https://aap-prod.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+esac
+
+# === Callback Script ===
+cat > /usr/local/bin/aap-callback.sh << 'EOF'
+#!/bin/bash
+for i in $(seq 1 $RETRIES); do
+    echo "[$(date)] Attempt $i: calling back to AAP ($AAP_CLUSTER)..."
+    curl -k -s -X POST -H "Content-Type: application/json" \
+      -d "{\"hostname\": \"$HOSTNAME\"}" \
+      "$AAP_CALLBACK_URL"
+    rc=$?
+    if [ $rc -eq 0 ]; then
+        echo "AAP callback succeeded"
+        exit 0
+    fi
+    echo "AAP callback failed with exit code $rc, retrying in $RETRY_WAIT s..."
+    sleep $RETRY_WAIT
+done
+echo "AAP callback failed after $RETRIES attempts"
+exit 1
+EOF
+
+chmod +x /usr/local/bin/aap-callback.sh
+
+# === Systemd Service ===
+cat > /etc/systemd/system/aap-callback.service << 'EOF'
+[Unit]
+Description=AAP Callback Service
+After=network-online.target cloud-init.target
+Wants=network-online.target cloud-init.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aap-callback.sh
+Restart=on-failure
+RestartSec=15s
+EOF
+
+# === Systemd Timer ===
+cat > /etc/systemd/system/aap-callback.timer << EOF
+[Unit]
+Description=Delayed AAP Callback Timer
+
+[Timer]
+OnBootSec=${DELAY}
+Unit=aap-callback.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Enable timer
+systemctl daemon-reload
+systemctl enable --now aap-callback.timer
