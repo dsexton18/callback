@@ -1,0 +1,100 @@
+<%#
+kind: snippet
+name: aap_callback_debug_once
+%>
+
+# Self-disabling debug AAP 2.5 callback
+
+AAP_CLUSTER="<%= @host.params['aap_cluster'] || 'prod' %>"  
+DELAY="<%= @host.params['aap_callback_delay'] || '120' %>"        
+RETRIES="<%= @host.params['aap_callback_retries'] || '5' %>"     
+RETRY_WAIT="<%= @host.params['aap_callback_retry_wait'] || '30' %>"  
+
+HOSTNAME="<%= @host.name %>"
+
+# Cluster URLs
+case "$AAP_CLUSTER" in
+    dev)
+        AAP_CALLBACK_URL="https://aap-dev.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+    test)
+        AAP_CALLBACK_URL="https://aap-test.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+    prod|*)
+        AAP_CALLBACK_URL="https://aap-prod.example.com/api/v2/job_templates/<JOB_TEMPLATE_ID>/callback/"
+        ;;
+esac
+
+# === Callback Script ===
+cat > /usr/local/bin/aap-callback-debug-once.sh << 'EOF'
+#!/bin/bash
+
+LOGFILE="/var/log/aap-callback-debug.log"
+exec &> >(tee -a $LOGFILE)
+
+echo "=== Starting Self-Disabling AAP Callback ==="
+echo "Hostname: $HOSTNAME"
+echo "AAP URL: $AAP_CALLBACK_URL"
+echo "Cluster: $AAP_CLUSTER"
+
+# Network/DNS/TLS checks
+echo "--- Network Check ---"
+ping -c 3 $(echo $AAP_CALLBACK_URL | awk -F/ '{print $3}') || echo "Ping failed"
+echo "--- DNS Check ---"
+host $(echo $AAP_CALLBACK_URL | awk -F/ '{print $3}') || echo "DNS failed"
+echo "--- TLS Check ---"
+curl -vk $AAP_CALLBACK_URL -o /dev/null || echo "TLS/connect failed"
+
+# Callback with retries
+for i in $(seq 1 $RETRIES); do
+    echo "[\$(date)] Attempt \$i: calling back to AAP..."
+    HTTP_CODE=$(curl -sk -w "%{http_code}" -o /dev/null -X POST -H "Content-Type: application/json" \
+        -d "{\"hostname\": \"$HOSTNAME\"}" "$AAP_CALLBACK_URL")
+    echo "HTTP Response: \$HTTP_CODE"
+
+    if [ "$HTTP_CODE" == "200" ] || [ "$HTTP_CODE" == "201" ]; then
+        echo "AAP callback succeeded, disabling debug service..."
+        systemctl disable --now aap-callback-debug-once.timer aap-callback-debug-once.service
+        exit 0
+    fi
+
+    echo "Callback failed, retrying in $RETRY_WAIT s..."
+    sleep $RETRY_WAIT
+done
+
+echo "AAP callback failed after $RETRIES attempts, leaving timer enabled for next boot"
+exit 1
+EOF
+
+chmod +x /usr/local/bin/aap-callback-debug-once.sh
+
+# === Systemd Service ===
+cat > /etc/systemd/system/aap-callback-debug-once.service << 'EOF'
+[Unit]
+Description=Self-Disabling Debug AAP Callback
+After=network-online.target cloud-init.target
+Wants=network-online.target cloud-init.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aap-callback-debug-once.sh
+Restart=on-failure
+RestartSec=15s
+EOF
+
+# === Systemd Timer ===
+cat > /etc/systemd/system/aap-callback-debug-once.timer << EOF
+[Unit]
+Description=Delayed Self-Disabling Debug AAP Callback Timer
+
+[Timer]
+OnBootSec=${DELAY}
+Unit=aap-callback-debug-once.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Enable timer
+systemctl daemon-reload
+systemctl enable --now aap-callback-debug-once.timer
