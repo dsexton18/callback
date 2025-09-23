@@ -1,0 +1,56 @@
+# Hardened Ansible callback service for Foreman
+
+# === Script ===
+cat > /usr/local/bin/ansible-callback.sh << 'EOF'
+#!/bin/bash
+AAP_URL="<%= foreman_url("ansible") %>"
+PLAYBOOK_REPO="<%= @host.params['ansible_repo'] || 'https://git.example.com/ansible.git' %>"
+
+for i in {1..5}; do
+    echo "[$(date)] Attempt $i: running ansible-pull..."
+    /usr/bin/ansible-pull -U "$PLAYBOOK_REPO" --accept-host-key
+    rc=$?
+    if [ $rc -eq 0 ]; then
+        echo "Callback succeeded"
+        exit 0
+    fi
+    echo "Callback failed with exit code $rc, retrying in 30s..."
+    sleep 30
+done
+
+echo "Callback failed after 5 attempts"
+exit 1
+EOF
+
+chmod +x /usr/local/bin/ansible-callback.sh
+
+# === Service ===
+cat > /etc/systemd/system/ansible-callback.service << 'EOF'
+[Unit]
+Description=Ansible Callback to AAP
+After=network-online.target cloud-init.target
+Wants=network-online.target cloud-init.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ansible-callback.sh
+Restart=on-failure
+RestartSec=15s
+EOF
+
+# === Timer ===
+cat > /etc/systemd/system/ansible-callback.timer << 'EOF'
+[Unit]
+Description=Delayed Ansible Callback Timer
+
+[Timer]
+OnBootSec=2min
+Unit=ansible-callback.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Enable timer
+systemctl daemon-reload
+systemctl enable --now ansible-callback.timer
