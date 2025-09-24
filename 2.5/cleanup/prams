@@ -22,3 +22,17 @@ ansible_job_template_id = <job template ID>
 ansible_extra_vars = {"foo":"bar"} → optional extra vars.
 
 ansible_debug_callback = true → optional, switches to debug w
+
+
+
+Cloud-Init → saves service + timer + wrapper
+            ↓
+systemd starts timer (OnBootSec=2min)
+            ↓
+Timer triggers service
+            ↓
+Service runs wrapper script
+            ↓
+Wrapper calls AAP API, retries if necessary
+            ↓
+Success → service & timer disabled
