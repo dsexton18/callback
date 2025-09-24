@@ -7,3 +7,18 @@ For normal production hosts:
 ansible_aap25_provisioning = true
 
 ansible_debug_callback = false or uns
+
+
+
+
+ansible_aap25_provisioning = true → enables this snippet for the host.
+
+ansible_host_config_key = <AAP host config key>
+
+ansible_tower_fqdn = <AAP controller FQDN>
+
+ansible_job_template_id = <job template ID>
+
+ansible_extra_vars = {"foo":"bar"} → optional extra vars.
+
+ansible_debug_callback = true → optional, switches to debug w
