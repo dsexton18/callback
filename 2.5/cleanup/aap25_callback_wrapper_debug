@@ -4,8 +4,8 @@ name: aap25_callback_wrapper_debug
 model: ProvisioningTemplate
 snippet: true
 description: |
-  Debug variant of the AAP 2.5 callback wrapper.
-  Logs verbose curl output including request/response headers to /var/log/aap25-callback-debug.log.
+  Enhanced debug wrapper for AAP 2.5 callback.
+  Logs detailed info with timestamps, HTTP headers, and curl exit codes.
 -%>
 #!/bin/bash
 LOGFILE="/var/log/aap25-callback-debug.log"
@@ -13,16 +13,20 @@ URL="https://<%= host_param('ansible_tower_fqdn') %>/api/v2/job_templates/<%= ho
 KEY="<%= host_param('ansible_host_config_key') %>"
 EXTRA="<%= host_param('ansible_extra_vars') %>"
 
+echo "========================================================" >> "$LOGFILE"
 echo "[$(date)] Starting AAP 2.5 callback (DEBUG mode)" >> "$LOGFILE"
 
 for i in {1..10}; do
-  echo "[$(date)] Attempt $i..." >> "$LOGFILE"
+  echo "--------------------------------------------------------" >> "$LOGFILE"
+  echo "[$(date)] Attempt $i" >> "$LOGFILE"
 
   if [ -n "$EXTRA" ]; then
+    echo "[$(date)] Sending JSON payload with extra_vars" >> "$LOGFILE"
     curl -v -k -H 'Content-Type: application/json' \
       --data "{\"host_config_key\":\"$KEY\",\"extra_vars\":$EXTRA}" \
       "$URL" >> "$LOGFILE" 2>&1
   else
+    echo "[$(date)] Sending host_config_key only" >> "$LOGFILE"
     curl -v -k --data "host_config_key=$KEY" "$URL" >> "$LOGFILE" 2>&1
   fi
 
@@ -32,6 +36,7 @@ for i in {1..10}; do
   if [ $STATUS -eq 0 ]; then
     echo "[$(date)] Callback succeeded" >> "$LOGFILE"
     systemctl disable --now ansible-aap25-callback.service ansible-aap25-callback.timer >> "$LOGFILE" 2>&1
+    echo "[$(date)] Callback service and timer disabled" >> "$LOGFILE"
     exit 0
   fi
 
@@ -40,4 +45,5 @@ for i in {1..10}; do
 done
 
 echo "[$(date)] Callback failed after 10 attempts" >> "$LOGFILE"
+echo "========================================================" >> "$LOGFILE"
 exit 1
