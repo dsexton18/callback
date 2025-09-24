@@ -5,8 +5,7 @@ model: ProvisioningTemplate
 snippet: true
 description: |
   Setup one-time AAP 2.5 provisioning callback on first boot.
-  Based on Satellite's "ansible_provisioning_callback", but installs a systemd
-  timer and retry wrapper for reliability and logging.
+  Automatically uses debug wrapper if host_param('ansible_debug_callback') == true.
 -%>
 <% if host_param_true?('ansible_aap25_provisioning') -%>
 <%
@@ -16,6 +15,9 @@ description: |
                 (rhel_compatible && os_major >= 7) || 
                 (@host.operatingsystem.name == 'Ubuntu' && os_major >= 15) || 
                 (@host.operatingsystem.name == 'Debian' && os_major >= 8)
+
+  # Choose wrapper based on debug param
+  wrapper_snippet = host_param_true?('ansible_debug_callback') ? 'aap25_callback_wrapper_debug' : 'aap25_callback_wrapper'
 -%>
 <% if has_systemd -%>
 <%= save_to_file('/etc/systemd/system/ansible-aap25-callback.service',
@@ -23,12 +25,12 @@ description: |
 <%= save_to_file('/etc/systemd/system/ansible-aap25-callback.timer',
                  snippet('ansible_aap25_callback_timer')) %>
 <%= save_to_file('/usr/local/bin/aap25-callback-wrapper.sh',
-                 snippet('aap25_callback_wrapper')) %>
+                 snippet(wrapper_snippet)) %>
 chmod 700 /usr/local/bin/aap25-callback-wrapper.sh
 systemctl enable --now ansible-aap25-callback.timer
 <% else -%>
 # Fallback for non-systemd hosts
-<%= save_to_file('/root/aap25-callback-wrapper.sh', snippet('aap25_callback_wrapper')) %>
+<%= save_to_file('/root/aap25-callback-wrapper.sh', snippet(wrapper_snippet)) %>
 (chmod +x /root/aap25-callback-wrapper.sh; crontab -u root -l 2>/dev/null; echo "@reboot /root/aap25-callback-wrapper.sh" ) | crontab -u root -
 <% end -%>
 <% end -%>
