@@ -4,8 +4,8 @@ name: aap_callback_wrapper
 model: ProvisioningTemplate
 snippet: true
 description: |
-  Retry wrapper script for AAP provisioning callback.
-  Handles retries, logging, and disabling the service on success.
+  Retry wrapper for AAP 2.5 provisioning callback.
+  Logs to /var/log/aap-callback.log and retries up to 10 times.
 -%>
 #!/bin/bash
 LOGFILE="/var/log/aap-callback.log"
@@ -26,7 +26,7 @@ for i in {1..10}; do
 
   if [ $? -eq 0 ]; then
     echo "[$(date)] Callback succeeded" >> "$LOGFILE"
-    systemctl disable ansible-callback.service ansible-callback.timer >> "$LOGFILE" 2>&1
+    systemctl disable --now ansible-callback.service ansible-callback.timer >> "$LOGFILE" 2>&1
     exit 0
   fi
 
