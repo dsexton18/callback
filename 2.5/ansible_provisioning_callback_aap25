@@ -1,0 +1,34 @@
+<%#
+kind: snippet
+name: ansible_provisioning_callback_aap25
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Setup one-time AAP 2.5 provisioning callback on first boot.
+  Based on the default "ansible_provisioning_callback" snippet,
+  but installs a systemd timer and retry wrapper for reliability.
+-%>
+<% if host_param_true?('ansible_tower_provisioning') -%>
+<%
+  rhel_compatible = @host.operatingsystem.family == 'Redhat' && @host.operatingsystem.name != 'Fedora'
+  os_major = @host.operatingsystem.major.to_i
+  has_systemd = (@host.operatingsystem.name == 'Fedora' && os_major >= 20) || 
+                (rhel_compatible && os_major >= 7) || 
+                (@host.operatingsystem.name == 'Ubuntu' && os_major >= 15) || 
+                (@host.operatingsystem.name == 'Debian' && os_major >= 8)
+-%>
+<% if has_systemd -%>
+<%= save_to_file('/etc/systemd/system/ansible-callback.service',
+                 snippet('ansible_tower_callback_service_aap25')) %>
+<%= save_to_file('/etc/systemd/system/ansible-callback.timer',
+                 snippet('ansible_tower_callback_timer_aap25')) %>
+<%= save_to_file('/usr/local/bin/aap-callback-wrapper.sh',
+                 snippet('aap_callback_wrapper')) %>
+chmod 700 /usr/local/bin/aap-callback-wrapper.sh
+systemctl enable --now ansible-callback.timer
+<% else -%>
+# Fallback for non-systemd hosts
+<%= save_to_file('/root/aap-callback-wrapper.sh', snippet('aap_callback_wrapper')) %>
+(chmod +x /root/aap-callback-wrapper.sh; crontab -u root -l 2>/dev/null; echo "@reboot /root/aap-callback-wrapper.sh" ) | crontab -u root -
+<% end -%>
+<% end -%>
