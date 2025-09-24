@@ -1,0 +1,38 @@
+<%#
+kind: snippet
+name: aap_callback_wrapper
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Retry wrapper script for AAP provisioning callback.
+  Handles retries, logging, and disabling the service on success.
+-%>
+#!/bin/bash
+LOGFILE="/var/log/aap-callback.log"
+URL="https://<%= host_param('ansible_tower_fqdn') %>/api/v2/job_templates/<%= host_param('ansible_job_template_id') %>/callback/"
+KEY="<%= host_param('ansible_host_config_key') %>"
+EXTRA="<%= host_param('ansible_extra_vars') %>"
+
+echo "[$(date)] Starting AAP callback" >> "$LOGFILE"
+
+for i in {1..10}; do
+  if [ -n "$EXTRA" ]; then
+    curl -ksSf -H 'Content-Type: application/json' \
+      --data "{\"host_config_key\":\"$KEY\",\"extra_vars\":$EXTRA}" \
+      "$URL" >> "$LOGFILE" 2>&1
+  else
+    curl -ksSf --data "host_config_key=$KEY" "$URL" >> "$LOGFILE" 2>&1
+  fi
+
+  if [ $? -eq 0 ]; then
+    echo "[$(date)] Callback succeeded" >> "$LOGFILE"
+    systemctl disable ansible-callback.service ansible-callback.timer >> "$LOGFILE" 2>&1
+    exit 0
+  fi
+
+  echo "[$(date)] Attempt $i failed, retrying in 30s..." >> "$LOGFILE"
+  sleep 30
+done
+
+echo "[$(date)] Callback failed after 10 attempts" >> "$LOGFILE"
+exit 1
