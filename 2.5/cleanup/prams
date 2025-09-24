@@ -1,0 +1,9 @@
+ansible_aap25_provisioning = true
+
+ansible_debug_callback = true
+
+For normal production hosts:
+
+ansible_aap25_provisioning = true
+
+ansible_debug_callback = false or uns
