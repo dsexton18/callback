@@ -36,3 +36,43 @@ Service runs wrapper script
 Wrapper calls AAP API, retries if necessary
             ↓
 Success → service & timer disabled
+
+
+
+
+                ┌───────────────────────┐
+                │   Cloud-Init runs     │
+                │  provisioning template │
+                └─────────┬─────────────┘
+                          │
+        Creates service, timer, and wrapper script
+                          │
+                          ▼
+       ┌───────────────────────────────────┐
+       │ systemd timer:                    │
+       │ ansible-aap25-callback.timer      │
+       │ - OnBootSec=2min                  │
+       │ - OnUnitActiveSec=1min (retries) │
+       └─────────┬───────────────────────┘
+                 │
+                 ▼
+       ┌───────────────────────────────┐
+       │ systemd service:               │
+       │ ansible-aap25-callback.service │
+       │ Type=oneshot                   │
+       │ ExecStart=/usr/local/bin/...   │
+       └─────────┬─────────────────────┘
+                 │
+                 ▼
+       ┌───────────────────────────────┐
+       │ Wrapper script:               │
+       │ aap25-callback-wrapper.sh     │
+       │ (or debug variant)            │
+       │ - Calls AAP API               │
+       │ - Retries up to 10 times      │
+       │ - Logs output                 │
+       │ - Disables service+timer on success
+       └─────────┬─────────────────────┘
+                 │
+                 ▼
+       ┌────────
