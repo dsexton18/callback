@@ -1,0 +1,21 @@
+<%#
+kind: snippet
+name: ansible_aap25_callback_service
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Systemd service for running AAP 2.5 callback one-time.
+  Points to the wrapper script.
+-%>
+[Unit]
+Description=AAP 2.5 provisioning callback
+Wants=network-online.target cloud-init.service
+After=network-online.target cloud-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aap25-callback-wrapper.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target
