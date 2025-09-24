@@ -1,21 +1,19 @@
 <%#
 kind: snippet
-name: ansible_tower_callback_service_aap25
+name: ansible_tower_callback_timer_aap25
 model: ProvisioningTemplate
 snippet: true
 description: |
-  Systemd service + timer for running AAP 2.5 provisioning callback one-time,
-  based on the default Satellite snippet but with retries and logging.
+  Systemd timer for retrying AAP provisioning callback on boot.
 -%>
 [Unit]
-Description=Provisioning callback to Ansible Automation Platform
-Wants=network-online.target cloud-init.service
-After=network-online.target cloud-init.service
+Description=Retry provisioning callback to AAP
 
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/aap-callback-wrapper.sh
-RemainAfterExit=no
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=30s
+Persistent=true
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timers.target
