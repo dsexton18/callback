@@ -1,0 +1,19 @@
+<%#
+kind: snippet
+name: ansible_aap25_callback_timer
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Systemd timer for retrying AAP 2.5 provisioning callback on boot.
+-%>
+[Unit]
+Description=Retry AAP 2.5 provisioning callback
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
