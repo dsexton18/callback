@@ -1,0 +1,19 @@
+<%#
+kind: snippet
+name: ansible_aap25_callback_timer
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Systemd timer to delay and control execution of the AAP 2.5 callback service.
+-%>
+[Unit]
+Description=Timer for AAP 2.5 provisioning callback
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=0
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
