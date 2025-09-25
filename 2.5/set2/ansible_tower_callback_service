@@ -37,3 +37,36 @@ ExecStartPost=/usr/bin/systemctl disable ansible-callback
 
 [Install]
 WantedBy=multi-user.target
+
+-------------------------------------
+remove ExecStartPost
+
+<%#
+kind: snippet
+name: ansible_aap25_callback_service
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Systemd service for running the AAP 2.5 provisioning callback one-time.
+  Enhanced with curl timeouts and retry settings.
+-%>
+[Unit]
+Description=Provisioning callback to Ansible Automation Platform 2.5
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+<% if host_param('ansible_extra_vars') -%>
+ExecStart=/usr/bin/curl -s -k --max-time 60 --retry 5 --retry-delay 10 --retry-all-errors \
+  -H 'Content-Type: application/json' \
+  --data '{"host_config_key":"<%= host_param('ansible_host_config_key') %>", "extra_vars": <%= host_param('ansible_extra_vars') %>}' \
+  https://<%= host_param('ansible_tower_fqdn') %>/api/controller/v2/job_templates/<%= host_param('ansible_job_template_id') %>/callback/
+<% else -%>
+ExecStart=/usr/bin/curl -s -k --max-time 60 --retry 5 --retry-delay 10 --retry-all-errors \
+  --data "host_config_key=<%= host_param('ansible_host_config_key') -%>" \
+  https://<%= host_param('ansible_tower_fqdn') %>/api/controller/v2/job_templates/<%= host_param('ansible_job_template_id') %>/callback/
+<% end -%>
+
+[Install]
+WantedBy=multi-user.target
