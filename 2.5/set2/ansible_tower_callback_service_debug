@@ -2,34 +2,34 @@ ansible_callback_debug=true
 
 <%#
 kind: snippet
-name: ansible_tower_callback_service
+name: ansible_aap25_callback_service
 model: ProvisioningTemplate
 snippet: true
 description: |
-  Systemd service for running the Ansible Tower / AAP callback script one-time.
+  Systemd service for running the AAP 2.5 callback one-time.
   Enhanced with curl timeouts, retries, and optional debug logging.
 -%>
 [Unit]
-Description=Provisioning callback to Ansible Tower / AAP
+Description=Provisioning callback to AAP 2.5
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=oneshot
 <% debug = host_param_true?('ansible_callback_debug') ? true : false -%>
+<% curl_opts = "-k --max-time 60 --retry 5 --retry-delay 10 --retry-all-errors" -%>
+<% curl_opts += " -v >>/var/log/aap-callback.log 2>&1" if debug -%>
 <% if host_param('ansible_extra_vars') -%>
-ExecStart=/usr/bin/curl -k --max-time 60 --retry 5 --retry-delay 10 --retry-all-errors \
+ExecStart=/usr/bin/curl <%= curl_opts %> \
   -H 'Content-Type: application/json' \
   --data '{"host_config_key":"<%= host_param('ansible_host_config_key') %>", "extra_vars": <%= host_param('ansible_extra_vars') %>}' \
-  https://<%= host_param('ansible_tower_fqdn') %>/api/v2/job_templates/<%= host_param('ansible_job_template_id') %>/callback/ \
-  <% if debug -%> -v >>/var/log/aap-callback.log 2>&1 <% else -%> -s <% end -%>
+  https://<%= host_param('ansible_tower_fqdn') %>/api/controller/v2/job_templates/<%= host_param('ansible_job_template_id') %>/callback/
 <% else -%>
-ExecStart=/usr/bin/curl -k --max-time 60 --retry 5 --retry-delay 10 --retry-all-errors \
-  --data "host_config_key=<%= host_param('ansible_host_config_key') -%>" \
-  https://<%= host_param('ansible_tower_fqdn') -%>/api/v2/job_templates/<%= host_param('ansible_job_template_id') -%>/callback/ \
-  <% if debug -%> -v >>/var/log/aap-callback.log 2>&1 <% else -%> -s <% end -%>
+ExecStart=/usr/bin/curl <%= curl_opts %> \
+  --data "host_config_key=<%= host_param('ansible_host_config_key') %>" \
+  https://<%= host_param('ansible_tower_fqdn') %>/api/controller/v2/job_templates/<%= host_param('ansible_job_template_id') %>/callback/
 <% end -%>
-ExecStartPost=/usr/bin/systemctl disable ansible-callback.service ansible-callback.timer
+ExecStartPost=/usr/bin/systemctl disable ansible-callback.service
 
 [Install]
 WantedBy=multi-user.target
