@@ -1,3 +1,4 @@
+Use ansible_aap25_callback_timer
 <%#
 kind: snippet
 name: ansible_tower_callback_timer
