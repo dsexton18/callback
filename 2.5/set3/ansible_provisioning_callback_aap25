@@ -1,0 +1,15 @@
+<%#
+kind: snippet
+name: ansible_provisioning_callback_aap25
+model: ProvisioningTemplate
+snippet: true
+description: |
+  Setup one-time AAP 2.5 provisioning callback on first boot, using systemd timer.
+-%>
+<% if host_param_true?('ansible_tower_provisioning') -%>
+<%= save_to_file('/etc/systemd/system/ansible-callback.service',
+                 snippet('ansible_aap25_callback_service')) %>
+<%= save_to_file('/etc/systemd/system/ansible-callback.timer',
+                 snippet('ansible_aap25_callback_timer')) %>
+systemctl enable --now ansible-callback.timer
+<% end -%>
