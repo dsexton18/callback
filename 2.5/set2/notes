@@ -1,0 +1,100 @@
+1 See how many boots the system has recorded
+journalctl --list-boots
+That gives you boot indexes (-1, -2, etc.) and timestamps.
+You should see two entries already (first boot, second boot).
+
+2 Review the first boot logs
+journalctl -b -1 -e
+
+That line tells you the exact reason for reboot.
+systemd: Rebooting system.
+cloud-init: Reboot requested
+systemd: Relabelled /, rebooting
+kernel: SELinux: ...
+
+
+Check for SELinux relabel
+If /.autorelabel existed, it will cause an immediate relabel + reboot.
+ls -l /.autorelabel
+
+If it’s gone, check logs:
+grep -i relabel /var/log/messages
+
+4. Inspect cloud-init logs
+
+Cloud-init is very chatty about reboot triggers:
+less /var/log/cloud-init.log
+less /var/log/cloud-init-output.log
+
+grep -i reboot /var/log/cloud-init*.log
+
+
+Look at Anaconda/Image Builder artifacts
+
+Even though you’re not PXE-installing:
+
+/root/anaconda-ks.cfg (Satellite generates one if kickstart was used at build time).
+
+/var/log/anaconda/ might exist if the image was customized with OSBuild/Anaconda.
+
+These sometimes show post-install reboots forced by image builder.
+
+
+Confirm if systemd-firstboot ran
+This tool sets up hostname, locale, keymaps on first start and can request reboot.
+journalctl -b -1 | grep firstboot
+
+
+SELinux autorelabel (/.autorelabel left in the image → reboot).
+
+Cloud-init datasource changes (like switching network config → reboot).
+
+Kernel/initramfs mismatch (image builder had an older kernel, VMware tools or Satellite template injects updates → reboot).
+
+
+
+check_first_boot_reboot.sh
+#!/bin/bash
+# Script to investigate why the first boot of an image-based RHEL VM rebooted
+
+echo "=== Boot History ==="
+journalctl --list-boots || echo "No boot history found"
+
+echo -e "\n=== Last Boot (-1) Logs: Reboot Reason ==="
+journalctl -b -1 | egrep -i "reboot|relabel|firstboot|shutdown|cloud-init|systemd"
+
+echo -e "\n=== Check for SELinux autorelabel ==="
+if [ -f /.autorelabel ]; then
+    echo "Autorelabel flag still present -> will relabel and reboot."
+else
+    echo "No /.autorelabel file found."
+    grep -i relabel /var/log/messages 2>/dev/null | tail -n 10
+fi
+
+echo -e "\n=== Cloud-init logs (grep reboot) ==="
+grep -i reboot /var/log/cloud-init*.log 2>/dev/null || echo "No reboot trigger found in cloud-init logs."
+
+echo -e "\n=== Cloud-init Stage Summary ==="
+for stage in init init-local config final; do
+    echo "--- Stage: $stage ---"
+    grep -i "$stage" /var/log/cloud-init.log | head -n 2
+done
+
+echo -e "\n=== Firstboot Evidence ==="
+journalctl -b -1 | grep firstboot || echo "No firstboot activity found."
+
+echo -e "\n=== Kernel/Package Updates on First Boot ==="
+journalctl -b -1 | egrep -i "dnf|yum|kernel|dracut" | tail -n 20
+
+echo -e "\n=== Done ==="
+
+chmod +x check_first_boot_reboot.sh
+./check_first_boot_reboot.sh
+
+Was the reboot triggered by SELinux relabel?
+Did cloud-init explicitly request a reboot?
+Did systemd-firstboot or kernel/initramfs updates force it?
+Were any dnf updates installed on first boot that caused reboot?
+
+/var/log/foreman-proxy/proxy.lo
+/var/log/foreman/production.log
